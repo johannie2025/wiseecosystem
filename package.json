@@ -1,0 +1,25 @@
+{
+  "name": "wise-design-smart-ecosystem",
+  "version": "1.0.0",
+  "description": "Wise Design Smart Ecosystem - Multi-tenant WhatsApp SaaS",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.7.5",
+    "pino": "^9.3.2",
+    "pino-pretty": "^11.2.2",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2",
+    "uuid": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
