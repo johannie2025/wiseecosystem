@@ -8,6 +8,7 @@ import {
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { toDataURL } from 'qrcode';
+import pino from 'pino';
 import { mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 
@@ -57,9 +58,18 @@ export async function initSession(tenantId, io, logger) {
       version,
       auth: state,
       printQRInTerminal: false,
-      logger: logger.child({ module: `baileys:${tenantId}` }),
-      // Optimisation mémoire — pas de store en mémoire pour les messages
+      // Logger muet dédié — évite les I/O massives qui ralentissent Baileys
+      logger: pino({ level: 'silent' }),
+      // Pas de store messages en mémoire
       getMessage: async () => undefined,
+      // Connexion rapide : pas d'aller-retour de présence inutile
+      markOnlineOnConnect: true,
+      // Timeout généreux pour les init queries (évite le Timed Out à 60s)
+      connectTimeoutMs: 30_000,
+      // Désactive la synchro d'historique complète (économise du temps)
+      syncFullHistory: false,
+      // Pas de prévisualisation de liens (économise des requêtes réseau)
+      generateHighQualityLinkPreview: false,
     });
 
     // Mise à jour de la session avec le socket
