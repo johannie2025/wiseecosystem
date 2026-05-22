@@ -120,9 +120,17 @@ app.use('/', hotelRouter(io, logger));
 io.on('connection', (socket) => {
   logger.debug(`[Socket.IO] Client connecté: ${socket.id}`);
 
+  // Le dashboard émet 'join_dashboard' → on rejoint la room 'dashboard:tenantId'
+  // C'est le nom de room utilisé dans routes.js : io.to(`dashboard:${tenantId}`)
+  socket.on('join_dashboard', (tenantId) => {
+    socket.join(`dashboard:${tenantId}`);
+    logger.debug(`[Socket.IO] ${socket.id} → room dashboard:${tenantId}`);
+  });
+
+  // Alias pour compatibilité si d'autres clients utilisent 'subscribe'
   socket.on('subscribe', (tenantId) => {
-    socket.join(`tenant:${tenantId}`);
-    logger.debug(`[Socket.IO] ${socket.id} → room tenant:${tenantId}`);
+    socket.join(`dashboard:${tenantId}`);
+    logger.debug(`[Socket.IO] ${socket.id} → room dashboard:${tenantId} (via subscribe)`);
   });
 
   socket.on('disconnect', () => {
