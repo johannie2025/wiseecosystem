@@ -217,4 +217,3 @@ export function getAllSessions() {
 function _emitStatus(io, tenantId, status, qrDataUrl, phone = null) {
   io.to(`dashboard:${tenantId}`).emit('session_status', { tenantId, status, qrDataUrl, phone });
   io.to('superadmin').emit('tenant_status_update', { tenantId, status, phone });
-}
