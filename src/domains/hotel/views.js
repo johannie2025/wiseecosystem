@@ -32,6 +32,7 @@ const HEAD = (title, extra = '') => `<!DOCTYPE html>
   .status-disconnected,.status-not_initialized,.status-error{background:#ef4444;}
   .status-initializing{background:#60a5fa;animation:pulse 1s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .room-badge{border-radius:10px;padding:4px 10px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;}
   .badge-available{background:rgba(34,197,94,.2);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
   .badge-occupied{background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.3);}
@@ -50,7 +51,6 @@ const HEAD = (title, extra = '') => `<!DOCTYPE html>
   .tab-btn.active{background:var(--gold);color:#0a0a0f;}
   .tab-btn:not(.active){color:var(--muted);} .tab-btn:not(.active):hover{color:var(--cream);}
   .section{display:none;} .section.active{display:block;}
-  @keyframes spin{to{transform:rotate(360deg)}}
   .toast{position:fixed;bottom:24px;right:24px;background:var(--dark-3);border:1px solid var(--gold);color:var(--cream);padding:12px 20px;border-radius:10px;font-size:.85rem;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;}
   .toast.show{opacity:1;}
   ${extra}
@@ -187,18 +187,18 @@ export function renderDashboard(tenant, sessionStatus, orders, rooms, stays, sta
   </header>
 
   <!-- QR Modal -->
-  <div id="qr-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center">
+  <div id="qr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:50;align-items:center;justify-content:center;">
     <div class="card p-8 text-center max-w-sm w-full">
       <div class="font-display text-xl gold mb-2">Scanner le QR Code</div>
-      <p class="text-xs text-gray-400 mb-4">Ouvrez WhatsApp → Appareils liés → Lier un appareil</p>
-      <div class="flex justify-center mb-2">
-        <div id="qr-spinner" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
-          <div style="width:40px;height:40px;border:3px solid var(--gold);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-          <span class="text-xs text-gray-500">Initialisation WhatsApp...</span>
+      <p class="text-xs text-gray-400 mb-4">WhatsApp → Appareils liés → Lier un appareil</p>
+      <div id="qr-container" class="flex justify-center min-h-[180px] items-center">
+        <div id="qr-loader" style="text-align:center">
+          <div style="width:40px;height:40px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div>
+          <p style="font-size:.75rem;color:#6b6b7a">Connexion en cours...</p>
         </div>
-        <img id="qr-img" src="" style="display:none;border-radius:8px;width:220px;" />
       </div>
-      <button onclick="document.getElementById('qr-modal').classList.add('hidden');_stopQrPolling();" class="btn-outline mt-3 px-6 py-2 text-sm w-full">Fermer</button>
+      <p id="qr-status-text" class="text-xs text-gray-500 mt-3"></p>
+      <button onclick="closeQRModal()" class="btn-outline mt-4 px-6 py-2 text-sm w-full">Fermer</button>
     </div>
   </div>
 
@@ -326,77 +326,84 @@ function toast(msg,ok=true){const t=document.getElementById('toast');t.textConte
 function showTab(name,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(name==='finance')loadClosedStays();}
 
 // ── WhatsApp ───────────────────────────────────────────────────────────────
-let _qrPoll=null;
+let _qrPollInterval = null;
 
-function _startQrPolling(){
-  if(_qrPoll)return;
-  let attempts=0;
-  _qrPoll=setInterval(async()=>{
-    attempts++;
-    try{
-      const r=await fetch('/dashboard/'+TID+'/status');
-      const d=await r.json();
-      updateWAStatus(d);
-      if(d.status==='qr_ready'){
-        // Charge l'image PNG directement depuis l'endpoint dédié
-        const img=document.getElementById('qr-img');
-        if(img)img.src='/dashboard/'+TID+'/qr-image?t='+Date.now();
-        document.getElementById('qr-spinner').style.display='none';
-        document.getElementById('qr-img').style.display='block';
-      }
-      if(d.status==='connected'){
-        _stopQrPolling();
-        document.getElementById('qr-modal').classList.add('hidden');
-        toast('✅ WhatsApp connecté !');
-      }
-    }catch(e){}
-    if(attempts>60)_stopQrPolling(); // timeout 2 min
-  },2000);
+function openQRModal(){
+  const m = document.getElementById('qr-modal');
+  m.style.display = 'flex';
+  document.getElementById('qr-container').innerHTML = '<div id="qr-loader" style="text-align:center"><div style="width:40px;height:40px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div><p style="font-size:.75rem;color:#6b6b7a">Connexion en cours...</p></div>';
+  document.getElementById('qr-status-text').textContent = '';
 }
 
-function _stopQrPolling(){
-  if(_qrPoll){clearInterval(_qrPoll);_qrPoll=null;}
+function closeQRModal(){
+  document.getElementById('qr-modal').style.display = 'none';
+  if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }
+}
+
+function showQR(dataUrl){
+  document.getElementById('qr-container').innerHTML = '<img src="'+dataUrl+'" style="border-radius:8px;width:220px;">';
+  document.getElementById('qr-status-text').textContent = 'Scannez ce code avec WhatsApp sur votre téléphone';
 }
 
 async function connectWA(){
-  document.getElementById('qr-modal').classList.remove('hidden');
-  document.getElementById('qr-spinner').style.display='flex';
-  document.getElementById('qr-img').style.display='none';
-  document.getElementById('qr-img').src='';
-  _stopQrPolling();
-  await fetch('/dashboard/'+TID+'/connect',{method:'POST'});
-  _startQrPolling();
+  openQRModal();
+  try {
+    const r = await fetch('/dashboard/'+TID+'/connect', {method:'POST'});
+    const d = await r.json();
+    if(!d.success){ toast('❌ Erreur de connexion', false); closeQRModal(); return; }
+  } catch(e){ toast('❌ Erreur réseau', false); closeQRModal(); return; }
+
+  // Polling fallback — au cas où l'événement socket est manqué (réseau instable, reconnexion...)
+  _qrPollInterval = setInterval(async () => {
+    try {
+      const sr = await fetch('/dashboard/'+TID+'/status');
+      const sd = await sr.json();
+      if(sd.status === 'qr_ready' && sd.qrDataUrl){
+        showQR(sd.qrDataUrl);
+      } else if(sd.status === 'connected'){
+        closeQRModal();
+        toast('✅ WhatsApp connecté !');
+        updateWAStatus({status:'connected'});
+      } else if(sd.status === 'error'){
+        toast('❌ Erreur Baileys — réessayez', false);
+        closeQRModal();
+      }
+    } catch(e){}
+  }, 2000);
+  // Arrêt auto du polling après 90 secondes
+  setTimeout(() => { if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }}, 90000);
 }
 
 async function disconnectWA(){
   if(!confirm('Déconnecter WhatsApp ?'))return;
-  _stopQrPolling();
   await fetch('/dashboard/'+TID+'/disconnect',{method:'POST'});
   toast('Session déconnectée');
   updateWAStatus({status:'disconnected',qrDataUrl:null});
 }
 
-// Socket.IO reste en écoute — si l'événement arrive, on l'utilise aussi
 socket.on('session_status',d=>{
   if(d.tenantId!==TID)return;
   updateWAStatus(d);
-  if(d.status==='qr_ready'){
-    document.getElementById('qr-spinner').style.display='none';
-    const img=document.getElementById('qr-img');
-    img.src='/dashboard/'+TID+'/qr-image?t='+Date.now();
-    img.style.display='block';
+  if(d.status==='qr_ready' && d.qrDataUrl){
+    // Socket rapide — arrête le polling, affiche le QR immédiatement
+    if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }
+    openQRModal();
+    showQR(d.qrDataUrl);
   }
   if(d.status==='connected'){
-    _stopQrPolling();
-    document.getElementById('qr-modal').classList.add('hidden');
+    closeQRModal();
     toast('✅ WhatsApp connecté !');
+  }
+  if(d.status==='error'){
+    closeQRModal();
+    toast('❌ Erreur WhatsApp — réessayez', false);
   }
 });
 
 function updateWAStatus(d){
   const dot=document.getElementById('wa-dot');
   const lbl=document.getElementById('wa-label');
-  if(dot){dot.className='status-dot status-'+d.status;lbl.textContent=d.status;}
+  if(dot){dot.className='status-dot status-'+d.status; lbl.textContent=d.status==='connected'?'✓ Connecté':d.status==='qr_ready'?'QR prêt':d.status;}
   const bc=document.getElementById('btn-connect');
   const bd=document.getElementById('btn-disconnect');
   if(bc)bc.classList.toggle('hidden',d.status==='connected');
