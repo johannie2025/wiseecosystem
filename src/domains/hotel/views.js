@@ -32,7 +32,6 @@ const HEAD = (title, extra = '') => `<!DOCTYPE html>
   .status-disconnected,.status-not_initialized,.status-error{background:#ef4444;}
   .status-initializing{background:#60a5fa;animation:pulse 1s infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  @keyframes spin{to{transform:rotate(360deg)}}
   .room-badge{border-radius:10px;padding:4px 10px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;}
   .badge-available{background:rgba(34,197,94,.2);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
   .badge-occupied{background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.3);}
@@ -187,18 +186,19 @@ export function renderDashboard(tenant, sessionStatus, orders, rooms, stays, sta
   </header>
 
   <!-- QR Modal -->
+  <style>@keyframes wa-spin{to{transform:rotate(360deg)}}</style>
   <div id="qr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:50;align-items:center;justify-content:center;">
     <div class="card p-8 text-center max-w-sm w-full">
       <div class="font-display text-xl gold mb-2">Scanner le QR Code</div>
-      <p class="text-xs text-gray-400 mb-4">WhatsApp → Appareils liés → Lier un appareil</p>
-      <div id="qr-container" class="flex justify-center min-h-[180px] items-center">
-        <div id="qr-loader" style="text-align:center">
-          <div style="width:40px;height:40px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div>
-          <p style="font-size:.75rem;color:#6b6b7a">Connexion en cours...</p>
+      <p class="text-xs text-gray-400 mb-1">WhatsApp → Appareils liés → Lier un appareil</p>
+      <p id="qr-hint" class="text-xs mb-4" style="color:var(--gold);min-height:16px"></p>
+      <div id="qr-container" style="display:flex;justify-content:center;align-items:center;min-height:200px;">
+        <div id="qr-spinner" style="text-align:center">
+          <div style="width:44px;height:44px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:wa-spin .8s linear infinite;margin:0 auto 10px;"></div>
+          <p style="font-size:.75rem;color:#6b6b7a;margin:0">Initialisation...</p>
         </div>
       </div>
-      <p id="qr-status-text" class="text-xs text-gray-500 mt-3"></p>
-      <button onclick="closeQRModal()" class="btn-outline mt-4 px-6 py-2 text-sm w-full">Fermer</button>
+      <button onclick="closeQRModal()" class="btn-outline mt-5 px-6 py-2 text-sm w-full">Fermer</button>
     </div>
   </div>
 
@@ -326,23 +326,23 @@ function toast(msg,ok=true){const t=document.getElementById('toast');t.textConte
 function showTab(name,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(name==='finance')loadClosedStays();}
 
 // ── WhatsApp ───────────────────────────────────────────────────────────────
-let _qrPollInterval = null;
+let _qrPoll = null;
 
 function openQRModal(){
   const m = document.getElementById('qr-modal');
   m.style.display = 'flex';
-  document.getElementById('qr-container').innerHTML = '<div id="qr-loader" style="text-align:center"><div style="width:40px;height:40px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;"></div><p style="font-size:.75rem;color:#6b6b7a">Connexion en cours...</p></div>';
-  document.getElementById('qr-status-text').textContent = '';
+  document.getElementById('qr-container').innerHTML = '<div id="qr-spinner" style="text-align:center"><div style="width:44px;height:44px;border:3px solid #2a2a4a;border-top-color:var(--gold);border-radius:50%;animation:wa-spin .8s linear infinite;margin:0 auto 10px;"></div><p style="font-size:.75rem;color:#6b6b7a;margin:0">Initialisation...</p></div>';
+  document.getElementById('qr-hint').textContent = '';
 }
 
 function closeQRModal(){
   document.getElementById('qr-modal').style.display = 'none';
-  if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }
+  if(_qrPoll){ clearInterval(_qrPoll); _qrPoll = null; }
 }
 
-function showQR(dataUrl){
+function _showQRImage(dataUrl){
   document.getElementById('qr-container').innerHTML = '<img src="'+dataUrl+'" style="border-radius:8px;width:220px;">';
-  document.getElementById('qr-status-text').textContent = 'Scannez ce code avec WhatsApp sur votre téléphone';
+  document.getElementById('qr-hint').textContent = 'Scannez avec WhatsApp sur votre téléphone';
 }
 
 async function connectWA(){
@@ -350,28 +350,28 @@ async function connectWA(){
   try {
     const r = await fetch('/dashboard/'+TID+'/connect', {method:'POST'});
     const d = await r.json();
-    if(!d.success){ toast('❌ Erreur de connexion', false); closeQRModal(); return; }
+    if(!d.success){ toast('❌ Erreur connexion WA', false); closeQRModal(); return; }
   } catch(e){ toast('❌ Erreur réseau', false); closeQRModal(); return; }
 
-  // Polling fallback — au cas où l'événement socket est manqué (réseau instable, reconnexion...)
-  _qrPollInterval = setInterval(async () => {
+  // Polling toutes les 2s — secours si l'événement socket est manqué
+  _qrPoll = setInterval(async () => {
     try {
-      const sr = await fetch('/dashboard/'+TID+'/status');
-      const sd = await sr.json();
-      if(sd.status === 'qr_ready' && sd.qrDataUrl){
-        showQR(sd.qrDataUrl);
-      } else if(sd.status === 'connected'){
+      const r = await fetch('/dashboard/'+TID+'/status');
+      const s = await r.json();
+      if(s.status === 'qr_ready' && s.qrDataUrl){
+        clearInterval(_qrPoll); _qrPoll = null;
+        _showQRImage(s.qrDataUrl);
+      } else if(s.status === 'connected'){
         closeQRModal();
         toast('✅ WhatsApp connecté !');
         updateWAStatus({status:'connected'});
-      } else if(sd.status === 'error'){
-        toast('❌ Erreur Baileys — réessayez', false);
+      } else if(s.status === 'error'){
         closeQRModal();
+        toast('❌ Erreur Baileys — réessayez', false);
       }
     } catch(e){}
   }, 2000);
-  // Arrêt auto du polling après 90 secondes
-  setTimeout(() => { if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }}, 90000);
+  setTimeout(() => { if(_qrPoll){ clearInterval(_qrPoll); _qrPoll = null; } }, 90000);
 }
 
 async function disconnectWA(){
@@ -385,10 +385,9 @@ socket.on('session_status',d=>{
   if(d.tenantId!==TID)return;
   updateWAStatus(d);
   if(d.status==='qr_ready' && d.qrDataUrl){
-    // Socket rapide — arrête le polling, affiche le QR immédiatement
-    if(_qrPollInterval){ clearInterval(_qrPollInterval); _qrPollInterval = null; }
+    if(_qrPoll){ clearInterval(_qrPoll); _qrPoll = null; } // socket plus rapide, stoppe le polling
     openQRModal();
-    showQR(d.qrDataUrl);
+    _showQRImage(d.qrDataUrl);
   }
   if(d.status==='connected'){
     closeQRModal();
