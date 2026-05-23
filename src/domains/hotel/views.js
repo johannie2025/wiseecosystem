@@ -50,6 +50,7 @@ const HEAD = (title, extra = '') => `<!DOCTYPE html>
   .tab-btn.active{background:var(--gold);color:#0a0a0f;}
   .tab-btn:not(.active){color:var(--muted);} .tab-btn:not(.active):hover{color:var(--cream);}
   .section{display:none;} .section.active{display:block;}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .toast{position:fixed;bottom:24px;right:24px;background:var(--dark-3);border:1px solid var(--gold);color:var(--cream);padding:12px 20px;border-radius:10px;font-size:.85rem;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;}
   .toast.show{opacity:1;}
   ${extra}
@@ -190,8 +191,14 @@ export function renderDashboard(tenant, sessionStatus, orders, rooms, stays, sta
     <div class="card p-8 text-center max-w-sm w-full">
       <div class="font-display text-xl gold mb-2">Scanner le QR Code</div>
       <p class="text-xs text-gray-400 mb-4">Ouvrez WhatsApp → Appareils liés → Lier un appareil</p>
-      <div id="qr-container" class="flex justify-center"><div class="text-gray-500 text-sm">Chargement...</div></div>
-      <button onclick="document.getElementById('qr-modal').classList.add('hidden')" class="btn-outline mt-5 px-6 py-2 text-sm w-full">Fermer</button>
+      <div class="flex justify-center mb-2">
+        <div id="qr-spinner" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div style="width:40px;height:40px;border:3px solid var(--gold);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+          <span class="text-xs text-gray-500">Initialisation WhatsApp...</span>
+        </div>
+        <img id="qr-img" src="" style="display:none;border-radius:8px;width:220px;" />
+      </div>
+      <button onclick="document.getElementById('qr-modal').classList.add('hidden');_stopQrPolling();" class="btn-outline mt-3 px-6 py-2 text-sm w-full">Fermer</button>
     </div>
   </div>
 
@@ -319,24 +326,68 @@ function toast(msg,ok=true){const t=document.getElementById('toast');t.textConte
 function showTab(name,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(name==='finance')loadClosedStays();}
 
 // ── WhatsApp ───────────────────────────────────────────────────────────────
+let _qrPoll=null;
+
+function _startQrPolling(){
+  if(_qrPoll)return;
+  let attempts=0;
+  _qrPoll=setInterval(async()=>{
+    attempts++;
+    try{
+      const r=await fetch('/dashboard/'+TID+'/status');
+      const d=await r.json();
+      updateWAStatus(d);
+      if(d.status==='qr_ready'){
+        // Charge l'image PNG directement depuis l'endpoint dédié
+        const img=document.getElementById('qr-img');
+        if(img)img.src='/dashboard/'+TID+'/qr-image?t='+Date.now();
+        document.getElementById('qr-spinner').style.display='none';
+        document.getElementById('qr-img').style.display='block';
+      }
+      if(d.status==='connected'){
+        _stopQrPolling();
+        document.getElementById('qr-modal').classList.add('hidden');
+        toast('✅ WhatsApp connecté !');
+      }
+    }catch(e){}
+    if(attempts>60)_stopQrPolling(); // timeout 2 min
+  },2000);
+}
+
+function _stopQrPolling(){
+  if(_qrPoll){clearInterval(_qrPoll);_qrPoll=null;}
+}
+
 async function connectWA(){
   document.getElementById('qr-modal').classList.remove('hidden');
+  document.getElementById('qr-spinner').style.display='flex';
+  document.getElementById('qr-img').style.display='none';
+  document.getElementById('qr-img').src='';
+  _stopQrPolling();
   await fetch('/dashboard/'+TID+'/connect',{method:'POST'});
+  _startQrPolling();
 }
+
 async function disconnectWA(){
   if(!confirm('Déconnecter WhatsApp ?'))return;
+  _stopQrPolling();
   await fetch('/dashboard/'+TID+'/disconnect',{method:'POST'});
   toast('Session déconnectée');
   updateWAStatus({status:'disconnected',qrDataUrl:null});
 }
 
+// Socket.IO reste en écoute — si l'événement arrive, on l'utilise aussi
 socket.on('session_status',d=>{
   if(d.tenantId!==TID)return;
   updateWAStatus(d);
-  if(d.status==='qr_ready'&&d.qrDataUrl){
-    document.getElementById('qr-container').innerHTML='<img src="'+d.qrDataUrl+'" style="border-radius:8px;width:220px;">';
+  if(d.status==='qr_ready'){
+    document.getElementById('qr-spinner').style.display='none';
+    const img=document.getElementById('qr-img');
+    img.src='/dashboard/'+TID+'/qr-image?t='+Date.now();
+    img.style.display='block';
   }
   if(d.status==='connected'){
+    _stopQrPolling();
     document.getElementById('qr-modal').classList.add('hidden');
     toast('✅ WhatsApp connecté !');
   }
