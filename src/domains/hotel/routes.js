@@ -4,6 +4,7 @@
 import { Router } from 'express';
 import * as repo from '../shared/repository.js';
 import { initSession, getSessionStatus, destroySession, sendMessage } from '../../core/sessionManager.js';
+import { toFileStream } from 'qrcode';
 import { renderDashboard, renderRoom, renderSuperAdmin, renderConfig } from './views.js';
 
 export function hotelRouter(io, logger) {
@@ -57,6 +58,20 @@ export function hotelRouter(io, logger) {
   router.post('/dashboard/:tenantId/disconnect', async (req, res) => {
     await destroySession(req.params.tenantId, logger);
     res.json({ success: true });
+  });
+
+  // ── QR image PNG (polling fallback — indépendant de Socket.IO) ────────────
+  router.get('/dashboard/:tenantId/qr-image', async (req, res) => {
+    const s = getSessionStatus(req.params.tenantId);
+    if (!s.qrDataUrl) {
+      return res.status(404).json({ error: 'QR not ready', status: s.status });
+    }
+    // qrDataUrl est déjà un data:image/png;base64,... — on extrait le buffer
+    const b64 = s.qrDataUrl.split(',')[1];
+    const buf = Buffer.from(b64, 'base64');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(buf);
   });
 
   router.get('/dashboard/:tenantId/status', (req, res) => {
