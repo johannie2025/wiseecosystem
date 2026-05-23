@@ -5,7 +5,6 @@ import {
   makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
-  fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
 import { toDataURL } from 'qrcode';
 import pino from 'pino';
@@ -50,12 +49,11 @@ export async function initSession(tenantId, io, logger) {
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    const { version } = await fetchLatestBaileysVersion();
+    // fetchLatestBaileysVersion() SUPPRIMÉ — appel réseau qui ajoutait 3-5s de latence
 
-    logger.info(`[Session:${tenantId}] Démarrage Baileys v${version.join('.')}`);
+    logger.info(`[Session:${tenantId}] Démarrage Baileys...`);
 
     const sock = makeWASocket({
-      version,
       auth: state,
       printQRInTerminal: false,
       // Logger muet dédié — évite les I/O massives qui ralentissent Baileys
