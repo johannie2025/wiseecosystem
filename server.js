@@ -1,6 +1,7 @@
 // ============================================================
 // server.js — Point d'entrée principal
 // Wise Design Smart Ecosystem — Multi-tenant WhatsApp SaaS
+// Modules: Hôtel PMS · Restaurant
 // ============================================================
 import 'dotenv/config';
 import express from 'express';
@@ -11,6 +12,7 @@ import pino from 'pino';
 import { CONFIG } from './src/config/index.js';
 import { startAutoPing } from './src/core/autoPing.js';
 import { hotelRouter } from './src/domains/hotel/routes.js';
+import { restaurantRouter } from './src/domains/restaurant/routes.js';
 
 // ── Logger Pino ────────────────────────────────────────────────────────────
 const logger = pino({
@@ -31,17 +33,18 @@ const io = new Server(httpServer, {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Health check (utilisé aussi par l'auto-ping) ───────────────────────────
+// ── Health check ───────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     ecosystem: CONFIG.ECOSYSTEM_NAME,
     env: CONFIG.NODE_ENV,
+    modules: ['hotel', 'restaurant'],
     timestamp: new Date().toISOString(),
   });
 });
 
-// ── Page d'accueil ─────────────────────────────────────────────────────────
+// ── Page d'accueil — Sélecteur de module ─────────────────────────────────
 app.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -50,63 +53,79 @@ app.get('/', (req, res) => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${CONFIG.ECOSYSTEM_NAME}</title>
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
       <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-          font-family: 'Segoe UI', sans-serif;
-          background: #0f0f1a;
-          color: #e0e0e0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          padding: 2rem;
-        }
-        .card {
-          background: #1a1a2e;
-          border: 1px solid #2a2a4a;
-          border-radius: 16px;
-          padding: 3rem;
-          max-width: 500px;
-          width: 100%;
-          text-align: center;
-        }
-        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #7c83fd; }
-        p  { color: #888; margin-bottom: 2rem; }
-        .badge {
-          display: inline-block;
-          background: #25d366;
-          color: #000;
-          font-weight: 700;
-          font-size: 0.75rem;
-          padding: 0.25rem 0.75rem;
-          border-radius: 999px;
-          margin-bottom: 2rem;
-        }
-        a.btn {
-          display: inline-block;
-          background: #7c83fd;
-          color: #fff;
-          text-decoration: none;
-          padding: 0.75rem 2rem;
-          border-radius: 8px;
-          font-weight: 600;
-          margin: 0.5rem;
-          transition: opacity .2s;
-        }
-        a.btn:hover { opacity: 0.85; }
-        a.btn.secondary { background: #2a2a4a; }
-        .env { margin-top: 2rem; font-size: 0.75rem; color: #555; }
+        *{box-sizing:border-box;margin:0;padding:0;}
+        :root{--gold:#c9a84c;--gold-light:#e8c97a;--ebony:#0a0a0f;--ebony-2:#111118;--ebony-3:#1a1a25;--cream:#f5efe6;--muted:#5a5a70;}
+        body{font-family:'DM Sans',sans-serif;background:var(--ebony);color:var(--cream);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;}
+        .container{max-width:860px;width:100%;text-align:center;}
+        .logo-title{font-family:'Cormorant Garamond',serif;font-size:3rem;color:var(--gold);margin-bottom:.5rem;font-weight:300;letter-spacing:.05em;}
+        .subtitle{color:var(--muted);font-size:.9rem;margin-bottom:3.5rem;}
+        .badge-live{display:inline-block;background:#22c55e;color:#000;font-weight:700;font-size:.7rem;padding:.25rem .75rem;border-radius:999px;margin-bottom:1.5rem;letter-spacing:.08em;}
+        .modules-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:3rem;}
+        .module-card{background:var(--ebony-2);border:1px solid rgba(201,168,76,.15);border-radius:18px;padding:2.5rem 2rem;text-align:left;transition:all .3s;cursor:pointer;text-decoration:none;display:block;}
+        .module-card:hover{border-color:rgba(201,168,76,.5);transform:translateY(-4px);box-shadow:0 20px 50px rgba(0,0,0,.4);}
+        .module-icon{font-size:3rem;margin-bottom:1rem;display:block;}
+        .module-title{font-family:'Cormorant Garamond',serif;font-size:1.7rem;color:var(--gold);margin-bottom:.5rem;}
+        .module-desc{color:var(--muted);font-size:.83rem;line-height:1.6;}
+        .module-features{margin-top:1.2rem;display:flex;flex-wrap:wrap;gap:.4rem;}
+        .feature-tag{background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.15);color:rgba(201,168,76,.8);font-size:.68rem;padding:.2rem .6rem;border-radius:6px;font-weight:500;}
+        .admin-links{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;}
+        .btn{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border-radius:9px;font-size:.83rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .25s;}
+        .btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#0a0a0f;}
+        .btn-gold:hover{opacity:.9;box-shadow:0 6px 18px rgba(201,168,76,.3);}
+        .btn-ghost{background:var(--ebony-3);color:var(--muted);border:1px solid rgba(201,168,76,.1);}
+        .btn-ghost:hover{color:var(--cream);border-color:rgba(201,168,76,.3);}
+        .divider{border:none;border-top:1px solid rgba(201,168,76,.08);margin:2rem 0;}
+        .env-info{color:var(--muted);font-size:.72rem;opacity:.6;}
+        @media(max-width:600px){.modules-grid{grid-template-columns:1fr;}.logo-title{font-size:2rem;}}
       </style>
     </head>
     <body>
-      <div class="card">
-        <span class="badge">⚡ LIVE</span>
-        <h1>${CONFIG.ECOSYSTEM_NAME}</h1>
-        <p>Plateforme SaaS multi-tenant WhatsApp pour l'hôtellerie en Afrique Centrale</p>
-        <a class="btn" href="/admin?secret=${CONFIG.SUPERADMIN_SECRET}">🛡️ SuperAdmin</a>
-        <a class="btn secondary" href="/health">❤️ Health</a>
-        <div class="env">v1.0.0 — ${CONFIG.NODE_ENV} — Port ${CONFIG.PORT}</div>
+      <div class="container">
+        <span class="badge-live">⚡ LIVE</span>
+        <div class="logo-title">${CONFIG.ECOSYSTEM_NAME}</div>
+        <p class="subtitle">Plateforme SaaS multi-tenant WhatsApp — Hôtellerie & Restauration en Afrique Centrale</p>
+
+        <div class="modules-grid">
+          <!-- Module Hôtel -->
+          <a href="/admin?secret=${CONFIG.SUPERADMIN_SECRET}" class="module-card">
+            <span class="module-icon">🏨</span>
+            <div class="module-title">Module Hôtel PMS</div>
+            <p class="module-desc">Gestion complète hôtelière via WhatsApp. Check-in/out automatisé, room service, facturation, séjours.</p>
+            <div class="module-features">
+              <span class="feature-tag">Check-in WA</span>
+              <span class="feature-tag">Room Service</span>
+              <span class="feature-tag">Facturation</span>
+              <span class="feature-tag">Multi-hôtel</span>
+            </div>
+          </a>
+
+          <!-- Module Restaurant -->
+          <a href="/restaurant/admin?secret=${CONFIG.SUPERADMIN_SECRET}" class="module-card">
+            <span class="module-icon">🍽️</span>
+            <div class="module-title">Module Restaurant</div>
+            <p class="module-desc">Bot de commande WhatsApp intelligent, réservations de tables, fidélité, promotions et statistiques.</p>
+            <div class="module-features">
+              <span class="feature-tag">Commandes WA</span>
+              <span class="feature-tag">Réservations</span>
+              <span class="feature-tag">Fidélité</span>
+              <span class="feature-tag">Promotions</span>
+            </div>
+          </a>
+        </div>
+
+        <hr class="divider">
+
+        <div class="admin-links">
+          <a class="btn btn-gold" href="/admin?secret=${CONFIG.SUPERADMIN_SECRET}">🏨 Admin Hôtels</a>
+          <a class="btn btn-gold" href="/restaurant/admin?secret=${CONFIG.SUPERADMIN_SECRET}">🍽️ Admin Restaurants</a>
+          <a class="btn btn-ghost" href="/health">❤️ Health Check</a>
+        </div>
+
+        <div class="env-info" style="margin-top:2rem">
+          v2.0.0 · ${CONFIG.NODE_ENV} · Port ${CONFIG.PORT} · 2 modules actifs
+        </div>
       </div>
     </body>
     </html>
@@ -116,21 +135,27 @@ app.get('/', (req, res) => {
 // ── Domaine Hôtel ──────────────────────────────────────────────────────────
 app.use('/', hotelRouter(io, logger));
 
+// ── Domaine Restaurant ─────────────────────────────────────────────────────
+app.use('/', restaurantRouter(io, logger));
+
 // ── Socket.IO — connexions temps réel ─────────────────────────────────────
 io.on('connection', (socket) => {
   logger.debug(`[Socket.IO] Client connecté: ${socket.id}`);
 
-  // Le dashboard émet 'join_dashboard' → on rejoint la room 'dashboard:tenantId'
-  // C'est le nom de room utilisé dans routes.js : io.to(`dashboard:${tenantId}`)
   socket.on('join_dashboard', (tenantId) => {
     socket.join(`dashboard:${tenantId}`);
     logger.debug(`[Socket.IO] ${socket.id} → room dashboard:${tenantId}`);
   });
 
-  // Alias pour compatibilité si d'autres clients utilisent 'subscribe'
   socket.on('subscribe', (tenantId) => {
     socket.join(`dashboard:${tenantId}`);
     logger.debug(`[Socket.IO] ${socket.id} → room dashboard:${tenantId} (via subscribe)`);
+  });
+
+  // SuperAdmin reçoit tous les events
+  socket.on('join_superadmin', () => {
+    socket.join('superadmin');
+    logger.debug(`[Socket.IO] ${socket.id} → room superadmin`);
   });
 
   socket.on('disconnect', () => {
@@ -142,9 +167,9 @@ io.on('connection', (socket) => {
 httpServer.listen(CONFIG.PORT, () => {
   logger.info(`✅ ${CONFIG.ECOSYSTEM_NAME} démarré sur le port ${CONFIG.PORT}`);
   logger.info(`🌍 Environnement: ${CONFIG.NODE_ENV}`);
+  logger.info(`🏨 Module Hôtel  → /admin?secret=***`);
+  logger.info(`🍽️  Module Restaurant → /restaurant/admin?secret=***`);
   logger.info(`🔗 http://localhost:${CONFIG.PORT}`);
-
-  // Auto-ping anti-sleep Render.com
   startAutoPing(logger);
 });
 
