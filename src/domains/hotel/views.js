@@ -116,321 +116,327 @@ async function createTenant(){
 export function renderDashboard(tenant, sessionStatus, orders, rooms, stays, stats) {
   const { tenantId, name } = tenant;
   const activeSt = stays.filter(s => s.status === 'active' || s.status === 'checkout_requested');
+  const waStatus = sessionStatus.status;
 
-  // ── Grille des chambres ───────────────────────────────────────────────
+  // ── Grille des chambres ────────────────────────────────────────────────
+  const statusLabel = {available:'Disponible',occupied:'Occupee',cleaning:'Nettoyage',out_of_service:'Hors service',checkout_pending:'Checkout'};
   const roomGrid = rooms.map(r => {
     const stay = stays.find(s => s.roomNumber === r.number && (s.status === 'active' || s.status === 'checkout_requested'));
-    const guestInfo = stay ? `<div class="text-xs text-gray-400 mt-1 truncate">${stay.guestName}</div>` : '';
-    const checkoutBtn = stay ? `<button onclick="showCheckout('${stay.stayId}','${r.number}','${stay.guestName}',${stay.totalDue},'${stay.guestPhone}')" class="mt-2 w-full text-xs btn-outline py-1">🚪 Check-out</button>` : '';
-    return `<div class="card p-3 card-hover flex flex-col" data-room="${r.number}" data-status="${r.status}">
-      <div class="flex items-start justify-between">
-        <div class="font-display text-xl gold">${r.number}</div>
-        <span class="room-badge badge-${r.status}">${statusLabel[r.status] || r.status}</span>
-      </div>
-      <div class="text-xs text-gray-500 mt-1">${r.type} · ${fmt(r.pricePerNight)} XAF/nuit</div>
-      ${guestInfo}${checkoutBtn}
-    </div>`;
+    const guestInfo = stay ? '<div class="text-xs text-gray-400 mt-1 truncate">' + stay.guestName + '</div>' : '';
+    const coBtn = stay ? '<button onclick="showCheckout(\'' + stay.stayId + '\',\'' + r.number + '\',\'' + stay.guestName.replace(/'/g,"\\'") + '\',' + stay.totalDue + ',\'' + stay.guestPhone + '\')" class="mt-2 w-full text-xs btn-outline py-1">Checkout</button>' : '';
+    return '<div class="card p-3 card-hover flex flex-col"><div class="flex items-start justify-between"><div class="font-display text-xl gold">' + r.number + '</div><span class="room-badge badge-' + r.status + '">' + (statusLabel[r.status]||r.status) + '</span></div><div class="text-xs text-gray-500 mt-1">' + r.type + ' - ' + Number(r.pricePerNight).toLocaleString() + ' XAF/nuit</div>' + guestInfo + coBtn + '</div>';
   }).join('');
 
-  // ── Commandes récentes ────────────────────────────────────────────────
-  const orderCards = orders.slice(0, 20).map(o => `
-    <div class="card p-4 order-card mb-3" id="order-${o.orderId}">
-      <div class="flex items-center justify-between mb-2">
-        <span class="text-sm font-medium">Chambre <span class="gold">${o.roomNumber}</span> — #${o.orderId.slice(-6).toUpperCase()}</span>
-        <span class="room-badge badge-${o.status} text-xs">${orderLabel[o.status]}</span>
-      </div>
-      <div class="text-xs text-gray-400">${o.items.map(i => `${i.name} ×${i.qty}`).join(' · ')}${o.total > 0 ? ` — <span class="gold">${fmt(o.total)} XAF</span>` : ''}</div>
-      <div class="flex gap-2 mt-3">
-        ${o.status === 'pending' ? `<button onclick="updateOrder('${o.orderId}','confirmed')" class="text-xs btn-gold px-3 py-1">✓ Confirmer</button><button onclick="updateOrder('${o.orderId}','cancelled')" class="text-xs btn-danger px-3 py-1">✗ Annuler</button>` : ''}
-        ${o.status === 'confirmed' ? `<button onclick="updateOrder('${o.orderId}','delivered')" class="text-xs btn-gold px-3 py-1">📦 Livré</button>` : ''}
-      </div>
-    </div>`).join('');
+  // ── Commandes ─────────────────────────────────────────────────────────
+  const orderLabel = {pending:'En attente',confirmed:'Confirmee',delivered:'Livree',cancelled:'Annulee'};
+  const orderCards = orders.slice(0, 20).map(o => {
+    const actions = o.status === 'pending'
+      ? '<button onclick="updateOrder(\'' + o.orderId + '\',\'confirmed\')" class="text-xs btn-gold px-3 py-1">Confirmer</button><button onclick="updateOrder(\'' + o.orderId + '\',\'cancelled\')" class="text-xs btn-danger px-3 py-1">Annuler</button>'
+      : o.status === 'confirmed' ? '<button onclick="updateOrder(\'' + o.orderId + '\',\'delivered\')" class="text-xs btn-gold px-3 py-1">Livre</button>' : '';
+    return '<div class="card p-4 order-card mb-3" id="order-' + o.orderId + '"><div class="flex items-center justify-between mb-2"><span class="text-sm font-medium">Chambre <span class="gold">' + o.roomNumber + '</span></span><span class="room-badge badge-' + o.status + ' text-xs">' + (orderLabel[o.status]||o.status) + '</span></div><div class="text-xs text-gray-400">' + o.items.map(i => i.name + ' x' + i.qty).join(', ') + (o.total > 0 ? ' - ' + o.total.toLocaleString() + ' XAF' : '') + '</div><div class="flex gap-2 mt-3">' + actions + '</div></div>';
+  }).join('');
 
-  // ── Séjours actifs ────────────────────────────────────────────────────
+  // ── Séjours actifs ─────────────────────────────────────────────────────
   const stayRows = activeSt.map(s => {
     const checkOut = new Date(s.checkOutAt).toLocaleDateString('fr-FR');
     const isReq = s.status === 'checkout_requested';
-    return `<tr class="${isReq ? 'bg-purple-900/10' : ''}">
-      <td class="p-3 gold font-medium">${s.roomNumber}</td>
-      <td class="p-3 text-sm">${s.guestName}</td>
-      <td class="p-3 text-xs text-gray-400">${s.guestPhone || '—'}</td>
-      <td class="p-3 text-xs">${checkOut}</td>
-      <td class="p-3 text-right gold text-sm">${fmt(s.totalDue)} XAF</td>
-      <td class="p-3 text-right">
-        ${isReq ? `<span class="room-badge badge-checkout_pending mr-2">Demandé</span>` : ''}
-        <button onclick="showCheckout('${s.stayId}','${s.roomNumber}','${s.guestName}',${s.totalDue},'${s.guestPhone}')" class="text-xs btn-outline px-3 py-1">🚪 Check-out</button>
-      </td>
-    </tr>`;
+    return '<tr class="' + (isReq ? 'bg-purple-900/10' : '') + '"><td class="p-3 gold font-medium">' + s.roomNumber + '</td><td class="p-3 text-sm">' + s.guestName + '</td><td class="p-3 text-xs text-gray-400">' + (s.guestPhone||'-') + '</td><td class="p-3 text-xs">' + checkOut + '</td><td class="p-3 text-right gold text-sm">' + Number(s.totalDue).toLocaleString() + ' XAF</td><td class="p-3 text-right"><button onclick="showCheckout(\'' + s.stayId + '\',\'' + s.roomNumber + '\',\'' + s.guestName.replace(/'/g,"\\'") + '\',' + s.totalDue + ',\'' + s.guestPhone + '\')" class="text-xs btn-outline px-3 py-1">Checkout</button></td></tr>';
   }).join('');
 
-  const waStatus = sessionStatus.status;
+  const fmt = n => Number(n||0).toLocaleString('fr-FR');
 
-  return HEAD(`Dashboard — ${name}`) + `
+  return `${HEAD('Dashboard - ' + name)}
 <body class="min-h-screen">
-  <!-- Header -->
-  <header class="border-b border-yellow-900/20 px-6 py-4 flex items-center justify-between sticky top-0 z-40" style="background:var(--dark-2)">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold font-display" style="background:${tenant.primaryColor};color:#f5efe6">${tenant.logoText}</div>
-      <div>
-        <div class="font-display text-lg gold leading-tight">${name}</div>
-        <div class="text-xs text-gray-500">${tenant.address}</div>
-      </div>
-    </div>
-    <div class="flex items-center gap-3">
-      <span class="status-dot status-${waStatus}" id="wa-dot"></span>
-      <span class="text-xs text-gray-400" id="wa-label">${waStatus}</span>
-      <button id="btn-connect" onclick="connectWA()" class="btn-gold px-4 py-2 text-xs ${waStatus === 'connected' ? 'hidden' : ''}">⚡ Connecter WA</button>
-      <button id="btn-disconnect" onclick="disconnectWA()" class="btn-danger px-4 py-2 text-xs ${waStatus !== 'connected' ? 'hidden' : ''}">✕ Déconnecter</button>
-      <a href="/config/${tenantId}" class="btn-outline px-4 py-2 text-xs">⚙️ Config</a>
-    </div>
-  </header>
 
-  <!-- QR Code inline sous le header -->
-  <div id="qr-container" style="display:none;justify-content:center;padding:16px;background:var(--dark-2);border-bottom:1px solid rgba(201,168,76,0.1);"></div>
-
-  <!-- Check-in Modal -->
-  <div id="checkin-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-    <div class="card p-6 w-full max-w-md">
-      <div class="font-display text-xl gold mb-4">📋 Nouveau Check-in</div>
+  <!-- MODALS -->
+  <div id="checkin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:50;align-items:center;justify-content:center;padding:16px;">
+    <div class="card p-6 w-full" style="max-width:440px;">
+      <div class="font-display text-xl gold mb-4">Nouveau Check-in</div>
       <div class="grid gap-3">
-        <div><label class="text-xs text-gray-400 mb-1 block">Chambre *</label><input id="ci-room" placeholder="ex: 101" /></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Chambre *</label><input id="ci-room" placeholder="101" /></div>
         <div><label class="text-xs text-gray-400 mb-1 block">Nom du client *</label><input id="ci-name" placeholder="Nom complet" /></div>
         <div><label class="text-xs text-gray-400 mb-1 block">N° CNI / Passeport</label><input id="ci-id" placeholder="CNI-2024-001" /></div>
-        <div><label class="text-xs text-gray-400 mb-1 block">Téléphone WhatsApp</label><input id="ci-phone" placeholder="240XXXXXXXXX" /></div>
+        <div><label class="text-xs text-gray-400 mb-1 block">Telephone WhatsApp</label><input id="ci-phone" placeholder="240XXXXXXXXX" /></div>
         <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400 mb-1 block">Durée (nuits)</label><input id="ci-days" type="number" min="0" value="1" /></div>
-          <div><label class="text-xs text-gray-400 mb-1 block">Durée (heures)</label><input id="ci-hours" type="number" min="0" value="0" /></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Duree (nuits)</label><input id="ci-days" type="number" min="0" value="1" /></div>
+          <div><label class="text-xs text-gray-400 mb-1 block">Duree (heures)</label><input id="ci-hours" type="number" min="0" value="0" /></div>
         </div>
       </div>
       <div class="flex gap-3 mt-5">
-        <button onclick="submitCheckin()" class="btn-gold flex-1 py-2 text-sm">✅ Enregistrer</button>
-        <button onclick="document.getElementById('checkin-modal').classList.add('hidden')" class="btn-outline flex-1 py-2 text-sm">Annuler</button>
+        <button onclick="submitCheckin()" class="btn-gold flex-1 py-2 text-sm">Enregistrer</button>
+        <button onclick="closeModal('checkin-modal')" class="btn-outline flex-1 py-2 text-sm">Annuler</button>
       </div>
     </div>
   </div>
 
-  <!-- Checkout Modal -->
-  <div id="checkout-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
-    <div class="card p-6 w-full max-w-md">
-      <div class="font-display text-xl gold mb-1">🚪 Check-out</div>
-      <p class="text-xs text-gray-400 mb-4">Chambre <span id="co-room" class="gold"></span> — <span id="co-name"></span></p>
+  <div id="checkout-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:50;align-items:center;justify-content:center;padding:16px;">
+    <div class="card p-6 w-full" style="max-width:440px;">
+      <div class="font-display text-xl gold mb-1">Check-out</div>
+      <p class="text-xs text-gray-400 mb-4">Chambre <span id="co-room" class="gold"></span> - <span id="co-name"></span></p>
       <div class="card p-4 mb-4 text-center">
-        <div class="text-sm text-gray-400 mb-1">Total à régler</div>
+        <div class="text-sm text-gray-400 mb-1">Total a regler</div>
         <div class="font-display text-3xl gold" id="co-total"></div>
         <div class="text-xs text-gray-500">XAF</div>
       </div>
       <div><label class="text-xs text-gray-400 mb-1 block">Mode de paiement</label>
         <select id="co-payment">
-          <option value="cash">💵 Espèces</option>
-          <option value="mobile_money">📱 Mobile Money</option>
-          <option value="card">💳 Carte bancaire</option>
+          <option value="cash">Especes</option>
+          <option value="mobile_money">Mobile Money</option>
+          <option value="card">Carte bancaire</option>
         </select>
       </div>
       <div class="flex gap-3 mt-5">
-        <button onclick="submitCheckout()" class="btn-gold flex-1 py-2 text-sm">✅ Valider & Envoyer Facture WA</button>
-        <button onclick="document.getElementById('checkout-modal').classList.add('hidden')" class="btn-outline flex-1 py-2 text-sm">Annuler</button>
+        <button onclick="submitCheckout()" class="btn-gold flex-1 py-2 text-sm">Valider + Facture WA</button>
+        <button onclick="closeModal('checkout-modal')" class="btn-outline flex-1 py-2 text-sm">Annuler</button>
       </div>
       <input type="hidden" id="co-stay-id" />
     </div>
   </div>
 
+  <!-- HEADER -->
+  <header style="background:var(--dark-2);border-bottom:1px solid rgba(201,168,76,0.15);" class="px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold font-display" style="background:${tenant.primaryColor};color:#f5efe6">${tenant.logoText}</div>
+      <div>
+        <div class="font-display text-lg gold">${name}</div>
+        <div class="text-xs text-gray-500">${tenant.address}</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="status-dot status-${waStatus}" id="status-dot"></span>
+      <span class="text-sm" id="status-label">${waStatus === 'connected' ? 'Connecte' : waStatus === 'qr_ready' ? 'QR Pret' : 'Deconnecte'}</span>
+      <button onclick="connectWA()" class="btn-gold px-4 py-2 text-xs">Connecter WA</button>
+      <button onclick="disconnectWA()" class="btn-outline px-4 py-2 text-xs">Deconnecter</button>
+      <a href="/config/${tenantId}" class="btn-outline px-4 py-2 text-xs">Config</a>
+    </div>
+  </header>
+
+  <!-- QR CODE INLINE -->
+  <div id="qr-container" style="display:${waStatus === 'qr_ready' ? 'flex' : 'none'};justify-content:center;padding:16px;background:var(--dark-2);border-bottom:1px solid rgba(201,168,76,0.1);">
+    ${waStatus === 'qr_ready' && sessionStatus.qrDataUrl ? '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;"><p style="font-size:.75rem;color:#9ca3af;">Ouvrez WhatsApp - Appareils lies - Scanner ce QR</p><div style="padding:10px;background:#fff;border-radius:12px;"><img src="' + sessionStatus.qrDataUrl + '" style="width:200px;height:200px;display:block;"></div></div>' : ''}
+  </div>
+
   <main class="max-w-7xl mx-auto p-6">
-    <!-- Stats -->
+    <!-- STATS -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-      <div class="card p-4 text-center"><div class="font-display text-3xl gold">${stats.roomsAvailable}</div><div class="text-xs text-gray-400 mt-1">🟢 Disponibles</div></div>
-      <div class="card p-4 text-center"><div class="font-display text-3xl" style="color:#f87171">${stats.roomsOccupied}</div><div class="text-xs text-gray-400 mt-1">🔴 Occupées</div></div>
-      <div class="card p-4 text-center"><div class="font-display text-3xl" style="color:#fbbf24">${stats.roomsCleaning}</div><div class="text-xs text-gray-400 mt-1">🟡 Nettoyage</div></div>
-      <div class="card p-4 text-center"><div class="font-display text-3xl gold" id="stat-revenue-today">${fmt(stats.revenueToday)}</div><div class="text-xs text-gray-400 mt-1">💰 Recettes du jour (XAF)</div></div>
+      <div class="card p-4 text-center"><div class="font-display text-3xl gold">${stats.roomsAvailable}</div><div class="text-xs text-gray-400 mt-1">Disponibles</div></div>
+      <div class="card p-4 text-center"><div class="font-display text-3xl" style="color:#f87171">${stats.roomsOccupied}</div><div class="text-xs text-gray-400 mt-1">Occupees</div></div>
+      <div class="card p-4 text-center"><div class="font-display text-3xl" style="color:#fbbf24">${stats.roomsCleaning}</div><div class="text-xs text-gray-400 mt-1">Nettoyage</div></div>
+      <div class="card p-4 text-center"><div class="font-display text-3xl gold">${fmt(stats.revenueToday)}</div><div class="text-xs text-gray-400 mt-1">Recettes du jour (XAF)</div></div>
     </div>
 
-    <!-- Onglets -->
+    <!-- TABS -->
     <div class="flex gap-2 mb-6 flex-wrap">
-      <button class="tab-btn active" onclick="showTab('rooms',this)">🏠 Chambres (${rooms.length})</button>
-      <button class="tab-btn" onclick="showTab('orders',this)">📋 Commandes <span id="pending-count" class="ml-1 bg-yellow-500/20 text-yellow-400 text-xs px-2 py-0.5 rounded-full">${stats.pendingOrders}</span></button>
-      <button class="tab-btn" onclick="showTab('stays',this)">👤 Séjours actifs (${activeSt.length})</button>
-      <button class="tab-btn" onclick="showTab('finance',this)">💹 Finances</button>
-      <button onclick="document.getElementById('checkin-modal').classList.remove('hidden')" class="btn-gold px-5 py-2 text-sm ml-auto">+ Check-in</button>
+      <button id="tab-btn-rooms"   onclick="showTab('rooms',this)"   class="tab-btn active">Chambres (${rooms.length})</button>
+      <button id="tab-btn-orders"  onclick="showTab('orders',this)"  class="tab-btn">Commandes <span id="pending-count" style="background:rgba(251,191,36,0.2);color:#fbbf24;font-size:.7rem;padding:1px 6px;border-radius:999px;">${stats.pendingOrders}</span></button>
+      <button id="tab-btn-stays"   onclick="showTab('stays',this)"   class="tab-btn">Sejours (${activeSt.length})</button>
+      <button id="tab-btn-finance" onclick="showTab('finance',this)" class="tab-btn">Finances</button>
+      <button onclick="openModal('checkin-modal')" class="btn-gold px-5 py-2 text-sm ml-auto">+ Check-in</button>
     </div>
 
-    <!-- SECTION: Chambres -->
-    <div id="tab-rooms" class="section active">
+    <!-- SECTION CHAMBRES -->
+    <div id="tab-rooms" style="display:block;">
       <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3" id="rooms-grid">
-        ${roomGrid || '<p class="text-gray-500 col-span-5">Aucune chambre. <a href="/config/${tenantId}" class="gold underline">Configurer</a></p>'}
+        ${roomGrid || '<p class="text-gray-500 col-span-5">Aucune chambre. <a href="/config/' + tenantId + '" class="gold underline">Configurer</a></p>'}
       </div>
     </div>
 
-    <!-- SECTION: Commandes -->
-    <div id="tab-orders" class="section">
+    <!-- SECTION COMMANDES -->
+    <div id="tab-orders" style="display:none;">
       <div id="orders-list">${orderCards || '<p class="text-gray-500">Aucune commande.</p>'}</div>
     </div>
 
-    <!-- SECTION: Séjours actifs -->
-    <div id="tab-stays" class="section">
+    <!-- SECTION SEJOURS -->
+    <div id="tab-stays" style="display:none;">
       <div class="card overflow-hidden">
         <table class="w-full text-sm">
-          <thead><tr class="border-b border-yellow-900/20 text-xs text-gray-500">
-            <th class="p-3 text-left">Chambre</th><th class="p-3 text-left">Client</th><th class="p-3 text-left">Téléphone</th><th class="p-3 text-left">Check-out</th><th class="p-3 text-right">Total</th><th class="p-3"></th>
+          <thead><tr style="border-bottom:1px solid rgba(201,168,76,0.2);" class="text-xs text-gray-500">
+            <th class="p-3 text-left">Chambre</th><th class="p-3 text-left">Client</th><th class="p-3 text-left">Tel</th><th class="p-3 text-left">Check-out</th><th class="p-3 text-right">Total</th><th class="p-3"></th>
           </tr></thead>
-          <tbody id="stays-body">${stayRows || '<tr><td colspan="6" class="p-6 text-center text-gray-500">Aucun séjour actif.</td></tr>'}</tbody>
+          <tbody id="stays-body">${stayRows || '<tr><td colspan="6" class="p-6 text-center text-gray-500">Aucun sejour actif.</td></tr>'}</tbody>
         </table>
       </div>
     </div>
 
-    <!-- SECTION: Finances -->
-    <div id="tab-finance" class="section">
+    <!-- SECTION FINANCES -->
+    <div id="tab-finance" style="display:none;">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div class="card p-6 text-center">
-          <div class="text-xs text-gray-400 mb-2">📅 Aujourd'hui</div>
-          <div class="font-display text-2xl gold">${fmt(stats.revenueToday)}</div>
-          <div class="text-xs text-gray-500">XAF</div>
-        </div>
-        <div class="card p-6 text-center">
-          <div class="text-xs text-gray-400 mb-2">📆 Ce mois</div>
-          <div class="font-display text-2xl gold">${fmt(stats.revenueMonth)}</div>
-          <div class="text-xs text-gray-500">XAF</div>
-        </div>
-        <div class="card p-6 text-center">
-          <div class="text-xs text-gray-400 mb-2">📊 Total historique</div>
-          <div class="font-display text-2xl gold">${fmt(stats.revenueTotal)}</div>
-          <div class="text-xs text-gray-500">XAF</div>
-        </div>
+        <div class="card p-6 text-center"><div class="text-xs text-gray-400 mb-2">Aujourd'hui</div><div class="font-display text-2xl gold">${fmt(stats.revenueToday)}</div><div class="text-xs text-gray-500">XAF</div></div>
+        <div class="card p-6 text-center"><div class="text-xs text-gray-400 mb-2">Ce mois</div><div class="font-display text-2xl gold">${fmt(stats.revenueMonth)}</div><div class="text-xs text-gray-500">XAF</div></div>
+        <div class="card p-6 text-center"><div class="text-xs text-gray-400 mb-2">Total historique</div><div class="font-display text-2xl gold">${fmt(stats.revenueTotal)}</div><div class="text-xs text-gray-500">XAF</div></div>
       </div>
-      <div class="card p-6">
-        <div class="font-display text-lg gold mb-4">Historique des séjours clôturés</div>
-        <div id="closed-stays-list"><p class="text-gray-500 text-sm">Chargement...</p></div>
-      </div>
+      <div class="card p-6"><div class="font-display text-lg gold mb-4">Sejours clotures</div><div id="closed-stays-list"><p class="text-gray-500 text-sm">Chargement...</p></div></div>
     </div>
   </main>
-  <div class="toast" id="toast"></div>
-</body>
-${FOOT(`
-const TID='${tenantId}';
-const socket=io();
-socket.emit('join_dashboard',TID);
 
-function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=ok?'var(--gold)':'#ef4444';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
-function showTab(name,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(name==='finance')loadClosedStays();}
+  <div id="toast" style="position:fixed;bottom:24px;right:24px;background:var(--dark-3);border:1px solid var(--gold);color:var(--cream);padding:12px 20px;border-radius:10px;font-size:.85rem;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;"></div>
 
-// ── WhatsApp ─────────────────────────────────────────────────────────────
-async function connectWA(){
-  const lbl=document.getElementById('wa-label');
-  if(lbl)lbl.textContent='Connexion en cours...';
-  await fetch('/dashboard/'+TID+'/connect',{method:'POST'});
-}
-async function disconnectWA(){
-  await fetch('/dashboard/'+TID+'/disconnect',{method:'POST'});
-}
+  <script>
+  var TID = '${tenantId}';
+  var socket = io();
+  socket.emit('join_dashboard', TID);
 
-socket.on('session_status',({tenantId,status,qrDataUrl,phone})=>{
-  if(tenantId!==TID)return;
-  const dot=document.getElementById('wa-dot');
-  const lbl=document.getElementById('wa-label');
-  const qrEl=document.getElementById('qr-container');
-  const labels={'connected':'Connecte','qr_ready':'QR Pret - Scanner','disconnected':'Deconnecte','initializing':'Initialisation...','error':'Erreur'};
-  if(dot)dot.className='status-dot status-'+status;
-  if(lbl)lbl.textContent=labels[status]||status;
-  if(!qrEl)return;
-  if(status==='qr_ready'&&qrDataUrl){
-    qrEl.style.display='flex';
-    qrEl.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">'
-      +'<p style="font-size:.75rem;color:#9ca3af;">Ouvrez WhatsApp - Appareils lies - Scanner ce QR</p>'
-      +'<div style="padding:12px;background:#fff;border-radius:16px;">'
-      +'<img src="'+qrDataUrl+'" style="width:208px;height:208px;display:block;"></div></div>';
-  }else if(status==='connected'){
-    qrEl.style.display='flex';
-    qrEl.innerHTML='<div style="text-align:center;padding:8px;">'
-      +'<div style="font-size:2rem;">&#x2705;</div>'
-      +'<div style="color:#22c55e;font-size:.875rem;">WhatsApp operationnel</div>'
-      +(phone?'<div style="color:#6b7280;font-size:.75rem;margin-top:4px;">Tel: '+phone+'</div>':'')
-      +'</div>';
-    toast('WhatsApp connecte !');
-  }else{
-    qrEl.style.display='none';
-    qrEl.innerHTML='';
+  function toast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(function(){ t.style.opacity = '0'; }, 3500);
   }
-});
 
-// ── Commandes ─────────────────────────────────────────────────────────────
-async function updateOrder(id,status){
-  await fetch('/orders/'+id+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
-}
-socket.on('new_order',o=>{
-  const list=document.getElementById('orders-list');
-  const div=document.createElement('div');
-  div.className='card p-4 order-card mb-3';div.id='order-'+o.orderId;
-  div.innerHTML='<div class="flex items-center justify-between mb-2"><span class="text-sm font-medium">Chambre <span class="gold">'+o.roomNumber+'</span> — #'+o.orderId.slice(-6).toUpperCase()+'</span><span class="room-badge badge-pending text-xs">En attente</span></div><div class="text-xs text-gray-400">'+o.items.map(i=>i.name+' ×'+i.qty).join(' · ')+(o.total>0?' — <span class="gold">'+o.total.toLocaleString()+' XAF</span>':'')+'</div><div class="flex gap-2 mt-3"><button onclick="updateOrder(\''+o.orderId+'\',\'confirmed\')" class="text-xs btn-gold px-3 py-1">✓ Confirmer</button><button onclick="updateOrder(\''+o.orderId+'\',\'cancelled\')" class="text-xs btn-danger px-3 py-1">✗ Annuler</button></div>';
-  if(list.firstChild)list.insertBefore(div,list.firstChild);else list.appendChild(div);
-  const pc=document.getElementById('pending-count');if(pc)pc.textContent=parseInt(pc.textContent||0)+1;
-  toast('📋 Nouvelle commande — Chambre '+o.roomNumber);
-});
-socket.on('order_updated',o=>{
-  const el=document.getElementById('order-'+o.orderId);
-  if(el){const labels={pending:'En attente',confirmed:'Confirmée',delivered:'Livrée',cancelled:'Annulée'};el.querySelector('.room-badge').textContent=labels[o.status]||o.status;el.querySelector('.room-badge').className='room-badge badge-'+o.status+' text-xs';el.querySelectorAll('button').forEach(b=>b.remove());}
-});
+  // ── TABS ─────────────────────────────────────────────────────────────────
+  var TABS = ['rooms','orders','stays','finance'];
+  function showTab(name, btn) {
+    TABS.forEach(function(t) {
+      document.getElementById('tab-'+t).style.display = t === name ? 'block' : 'none';
+      var b = document.getElementById('tab-btn-'+t);
+      if (b) { b.classList.remove('active'); }
+    });
+    if (btn) btn.classList.add('active');
+    if (name === 'finance') loadClosedStays();
+  }
 
-// ── Chambres (temps réel) ─────────────────────────────────────────────────
-socket.on('room_updated',d=>{loadRooms();});
-socket.on('stay_created',s=>{toast('✅ Check-in: '+s.guestName+' — Chambre '+s.roomNumber);loadRooms();});
-socket.on('checkout_requested',s=>{toast('🚪 Checkout demandé — Chambre '+s.roomNumber);});
-socket.on('stay_closed',s=>{toast('💰 Séjour clôturé — '+s.guestName);loadRooms();});
+  // ── MODALS ────────────────────────────────────────────────────────────────
+  function openModal(id)  { document.getElementById(id).style.display = 'flex'; }
+  function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-async function loadRooms(){
-  const r=await fetch('/dashboard/'+TID+'/rooms');
-  const rooms=await r.json();
-  renderRoomsGrid(rooms);
+  // ── WHATSAPP ─────────────────────────────────────────────────────────────
+  var WA_LABELS = { connected: 'Connecte', qr_ready: 'QR Pret - Scanner', disconnected: 'Deconnecte', initializing: 'Initialisation...', error: 'Erreur' };
+
+  async function connectWA() {
+    document.getElementById('status-label').textContent = 'Connexion...';
+    await fetch('/dashboard/' + TID + '/connect', { method: 'POST' });
+  }
+
+  async function disconnectWA() {
+    await fetch('/dashboard/' + TID + '/disconnect', { method: 'POST' });
+  }
+
+  socket.on('session_status', function(data) {
+    if (data.tenantId !== TID) return;
+    var status = data.status;
+    var qrDataUrl = data.qrDataUrl;
+    var phone = data.phone;
+    var dot = document.getElementById('status-dot');
+    var lbl = document.getElementById('status-label');
+    var qrEl = document.getElementById('qr-container');
+    if (dot) dot.className = 'status-dot status-' + status;
+    if (lbl) lbl.textContent = WA_LABELS[status] || status;
+    if (!qrEl) return;
+    if (status === 'qr_ready' && qrDataUrl) {
+      qrEl.style.display = 'flex';
+      qrEl.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:8px;"><p style="font-size:.75rem;color:#9ca3af;">Ouvrez WhatsApp - Appareils lies - Scanner ce QR</p><div style="padding:10px;background:#fff;border-radius:12px;"><img src="' + qrDataUrl + '" style="width:200px;height:200px;display:block;"></div></div>';
+    } else if (status === 'connected') {
+      qrEl.style.display = 'flex';
+      qrEl.innerHTML = '<div style="text-align:center;padding:8px;"><div style="font-size:2rem;">OK</div><div style="color:#22c55e;">WhatsApp operationnel</div>' + (phone ? '<div style="color:#6b7280;font-size:.75rem;">Tel: ' + phone + '</div>' : '') + '</div>';
+      toast('WhatsApp connecte !');
+    } else {
+      qrEl.style.display = 'none';
+      qrEl.innerHTML = '';
+    }
+  });
+
+  // ── COMMANDES ─────────────────────────────────────────────────────────────
+  async function updateOrder(id, status) {
+    await fetch('/orders/' + id + '/status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: status }) });
+  }
+
+  socket.on('new_order', function(o) {
+    var list = document.getElementById('orders-list');
+    if (!list) return;
+    var div = document.createElement('div');
+    div.className = 'card p-4 order-card mb-3';
+    div.id = 'order-' + o.orderId;
+    var items = o.items.map(function(i){ return i.name + ' x' + i.qty; }).join(', ');
+    div.innerHTML = '<div class="flex items-center justify-between mb-2"><span class="text-sm">Chambre <span class="gold">' + o.roomNumber + '</span></span><span class="room-badge badge-pending text-xs">En attente</span></div><div class="text-xs text-gray-400">' + items + (o.total > 0 ? ' - ' + o.total.toLocaleString() + ' XAF' : '') + '</div><div class="flex gap-2 mt-3"><button onclick="updateOrder(\'' + o.orderId + '\',\'confirmed\')" class="text-xs btn-gold px-3 py-1">Confirmer</button><button onclick="updateOrder(\'' + o.orderId + '\',\'cancelled\')" class="text-xs btn-danger px-3 py-1">Annuler</button></div>';
+    if (list.firstChild) list.insertBefore(div, list.firstChild); else list.appendChild(div);
+    var pc = document.getElementById('pending-count');
+    if (pc) pc.textContent = parseInt(pc.textContent || 0) + 1;
+    toast('Nouvelle commande - Chambre ' + o.roomNumber);
+  });
+
+  socket.on('order_updated', function(o) {
+    var el = document.getElementById('order-' + o.orderId);
+    if (!el) return;
+    var labels = { pending:'En attente', confirmed:'Confirmee', delivered:'Livree', cancelled:'Annulee' };
+    var badge = el.querySelector('.room-badge');
+    if (badge) { badge.textContent = labels[o.status] || o.status; badge.className = 'room-badge badge-' + o.status + ' text-xs'; }
+    el.querySelectorAll('button').forEach(function(b){ b.remove(); });
+  });
+
+  // ── CHAMBRES temps reel ───────────────────────────────────────────────────
+  socket.on('room_updated', function(){ loadRooms(); });
+  socket.on('stay_created', function(s){ toast('Check-in: ' + s.guestName + ' - Chambre ' + s.roomNumber); loadRooms(); });
+  socket.on('checkout_requested', function(s){ toast('Checkout demande - Chambre ' + s.roomNumber); });
+  socket.on('stay_closed', function(s){ toast('Sejour cloture - ' + s.guestName); loadRooms(); });
+
+  async function loadRooms() {
+    var r = await fetch('/dashboard/' + TID + '/rooms');
+    var rooms = await r.json();
+    renderRoomsGrid(rooms);
+  }
+
+  function renderRoomsGrid(rooms) {
+    var grid = document.getElementById('rooms-grid');
+    if (!grid) return;
+    var statusLabel = { available:'Disponible', occupied:'Occupee', cleaning:'Nettoyage', out_of_service:'Hors service', checkout_pending:'Checkout' };
+    grid.innerHTML = rooms.map(function(r) {
+      return '<div class="card p-3 card-hover flex flex-col"><div class="flex items-start justify-between"><div class="font-display text-xl gold">' + r.number + '</div><span class="room-badge badge-' + r.status + '">' + (statusLabel[r.status]||r.status) + '</span></div><div class="text-xs text-gray-500 mt-1">' + r.type + ' - ' + Number(r.pricePerNight).toLocaleString() + ' XAF/nuit</div></div>';
+    }).join('');
+  }
+
+  // ── CHECK-IN ──────────────────────────────────────────────────────────────
+  async function submitCheckin() {
+    var body = {
+      roomNumber: document.getElementById('ci-room').value,
+      guestName:  document.getElementById('ci-name').value,
+      guestId:    document.getElementById('ci-id').value,
+      guestPhone: document.getElementById('ci-phone').value,
+      durationDays:  document.getElementById('ci-days').value,
+      durationHours: document.getElementById('ci-hours').value
+    };
+    if (!body.roomNumber || !body.guestName) { toast('Chambre et nom requis'); return; }
+    var r = await fetch('/dashboard/' + TID + '/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var d = await r.json();
+    if (d.success) { toast('Check-in enregistre !'); closeModal('checkin-modal'); }
+    else { toast('Erreur: ' + d.error); }
+  }
+
+  // ── CHECKOUT ──────────────────────────────────────────────────────────────
+  function showCheckout(stayId, room, name, total, phone) {
+    document.getElementById('co-stay-id').value = stayId;
+    document.getElementById('co-room').textContent = room;
+    document.getElementById('co-name').textContent = name;
+    document.getElementById('co-total').textContent = Number(total).toLocaleString('fr-FR');
+    openModal('checkout-modal');
+  }
+
+  async function submitCheckout() {
+    var stayId = document.getElementById('co-stay-id').value;
+    var paymentMethod = document.getElementById('co-payment').value;
+    var r = await fetch('/dashboard/' + TID + '/stays/' + stayId + '/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentMethod: paymentMethod }) });
+    var d = await r.json();
+    if (d.success) { toast('Check-out valide - Facture WA envoyee !'); closeModal('checkout-modal'); }
+    else { toast('Erreur: ' + d.error); }
+  }
+
+  // ── FINANCES ──────────────────────────────────────────────────────────────
+  async function loadClosedStays() {
+    var r = await fetch('/dashboard/' + TID + '/stays');
+    var stays = await r.json();
+    var closed = stays.filter(function(s){ return s.status === 'closed'; });
+    var el = document.getElementById('closed-stays-list');
+    if (!el) return;
+    if (!closed.length) { el.innerHTML = '<p class="text-gray-500 text-sm">Aucun sejour cloture.</p>'; return; }
+    var rows = closed.slice(0, 50).map(function(s) {
+      return '<tr style="border-bottom:1px solid rgba(201,168,76,0.1)"><td class="p-3">' + s.guestName + '</td><td class="p-3 gold">' + s.roomNumber + '</td><td class="p-3 text-xs text-gray-400">' + new Date(s.closedAt).toLocaleDateString('fr-FR') + '</td><td class="p-3 text-right gold">' + Number(s.totalDue).toLocaleString() + ' XAF</td></tr>';
+    }).join('');
+    el.innerHTML = '<table class="w-full text-sm"><thead><tr style="border-bottom:1px solid rgba(201,168,76,0.2)" class="text-xs text-gray-500"><th class="p-3 text-left">Client</th><th class="p-3 text-left">Chambre</th><th class="p-3 text-left">Depart</th><th class="p-3 text-right">Total</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+  </script>
+</body>
+</html>`;
 }
 
-function renderRoomsGrid(rooms){
-  const grid=document.getElementById('rooms-grid');if(!grid)return;
-  const statusLabel={available:'Disponible',occupied:'Occupée',cleaning:'Nettoyage',out_of_service:'Hors service',checkout_pending:'Checkout'};
-  grid.innerHTML=rooms.map(r=>{
-    return '<div class="card p-3 card-hover flex flex-col" data-room="'+r.number+'" data-status="'+r.status+'"><div class="flex items-start justify-between"><div class="font-display text-xl gold">'+r.number+'</div><span class="room-badge badge-'+r.status+'">'+(statusLabel[r.status]||r.status)+'</span></div><div class="text-xs text-gray-500 mt-1">'+r.type+' · '+Number(r.pricePerNight).toLocaleString()+' XAF/nuit</div></div>';
-  }).join('');
-}
-
-// ── Check-in ──────────────────────────────────────────────────────────────
-async function submitCheckin(){
-  const body={roomNumber:document.getElementById('ci-room').value,guestName:document.getElementById('ci-name').value,guestId:document.getElementById('ci-id').value,guestPhone:document.getElementById('ci-phone').value,durationDays:document.getElementById('ci-days').value,durationHours:document.getElementById('ci-hours').value};
-  if(!body.roomNumber||!body.guestName){toast('Chambre et nom requis',false);return;}
-  const r=await fetch('/dashboard/'+TID+'/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const d=await r.json();
-  if(d.success){toast('✅ Check-in enregistré !');document.getElementById('checkin-modal').classList.add('hidden');}
-  else{toast('❌ '+d.error,false);}
-}
-
-// ── Checkout ──────────────────────────────────────────────────────────────
-function showCheckout(stayId,room,name,total,phone){
-  document.getElementById('co-stay-id').value=stayId;
-  document.getElementById('co-room').textContent=room;
-  document.getElementById('co-name').textContent=name;
-  document.getElementById('co-total').textContent=Number(total).toLocaleString('fr-FR');
-  document.getElementById('checkout-modal').classList.remove('hidden');
-}
-async function submitCheckout(){
-  const stayId=document.getElementById('co-stay-id').value;
-  const paymentMethod=document.getElementById('co-payment').value;
-  const r=await fetch('/dashboard/'+TID+'/stays/'+stayId+'/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paymentMethod})});
-  const d=await r.json();
-  if(d.success){toast('✅ Check-out validé — Facture envoyée sur WhatsApp !');document.getElementById('checkout-modal').classList.add('hidden');}
-  else{toast('❌ '+d.error,false);}
-}
-
-// ── Finances ──────────────────────────────────────────────────────────────
-async function loadClosedStays(){
-  const r=await fetch('/dashboard/'+TID+'/stays');
-  const stays=await r.json();
-  const closed=stays.filter(s=>s.status==='closed');
-  const el=document.getElementById('closed-stays-list');
-  if(!el)return;
-  if(!closed.length){el.innerHTML='<p class="text-gray-500 text-sm">Aucun séjour clôturé.</p>';return;}
-  el.innerHTML='<table class="w-full text-sm"><thead><tr class="border-b border-yellow-900/20 text-xs text-gray-500"><th class="p-3 text-left">Client</th><th class="p-3 text-left">Chambre</th><th class="p-3 text-left">Départ</th><th class="p-3 text-right gold">Total</th></tr></thead><tbody>'+closed.slice(0,50).map(s=>'<tr class="border-b border-yellow-900/10"><td class="p-3">'+s.guestName+'</td><td class="p-3 gold">'+s.roomNumber+'</td><td class="p-3 text-xs text-gray-400">'+new Date(s.closedAt).toLocaleDateString("fr-FR")+'</td><td class="p-3 text-right gold">'+Number(s.totalDue).toLocaleString()+' XAF</td></tr>').join('')+'</tbody></table>';
-}
-`)}`;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// CONFIGURATION BACKOFFICE — CRUD Chambres + Menu
-// ══════════════════════════════════════════════════════════════════════════
 export function renderConfig(tenant, rooms, menu) {
   const { tenantId, name } = tenant;
 
