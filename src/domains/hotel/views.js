@@ -178,23 +178,15 @@ export function renderDashboard(tenant, sessionStatus, orders, rooms, stays, sta
     </div>
     <div class="flex items-center gap-3">
       <span class="status-dot status-${waStatus}" id="wa-dot"></span>
-      <span class="text-xs text-gray-400" id="wa-label">${{{'connected':'✓ Connecté','qr_ready':'⟳ QR — Scanner','disconnected':'✗ Déconnecté','initializing':'⟳ Initialisation...'}['${waStatus}'] || '${waStatus}'}}</span>
-      <button onclick="connectWA()" class="btn-gold px-4 py-2 text-xs">⚡ ${waStatus === 'connected' ? 'Relancer' : 'Connecter WA'}</button>
-      <button onclick="disconnectWA()" class="btn-outline px-4 py-2 text-xs">✕ Déconnecter</button>
+      <span class="text-xs text-gray-400" id="wa-label">${waStatus}</span>
+      <button id="btn-connect" onclick="connectWA()" class="btn-gold px-4 py-2 text-xs ${waStatus === 'connected' ? 'hidden' : ''}">⚡ Connecter WA</button>
+      <button id="btn-disconnect" onclick="disconnectWA()" class="btn-danger px-4 py-2 text-xs ${waStatus !== 'connected' ? 'hidden' : ''}">✕ Déconnecter</button>
       <a href="/config/${tenantId}" class="btn-outline px-4 py-2 text-xs">⚙️ Config</a>
     </div>
   </header>
 
-  <!-- QR Code inline — affiché sous le header, géré par Socket.IO -->
-  <div id="qr-container" class="flex justify-center py-4" style="background:var(--dark-2);border-bottom:1px solid rgba(201,168,76,0.1);${waStatus === 'qr_ready' ? '' : 'display:none!important'}">
-    ${waStatus === 'qr_ready' && sessionStatus.qrDataUrl ? `
-      <div class="flex flex-col items-center gap-2">
-        <p class="text-xs text-gray-400">Ouvrez WhatsApp → Appareils liés → Scanner ce QR</p>
-        <div class="p-3 bg-white rounded-2xl inline-block shadow-2xl shadow-yellow-900/20">
-          <img src="${sessionStatus.qrDataUrl}" alt="QR WhatsApp" style="width:208px;height:208px;">
-        </div>
-      </div>` : ''}
-  </div>
+  <!-- QR Code inline sous le header -->
+  <div id="qr-container" style="display:none;justify-content:center;padding:16px;background:var(--dark-2);border-bottom:1px solid rgba(201,168,76,0.1);"></div>
 
   <!-- Check-in Modal -->
   <div id="checkin-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
@@ -319,39 +311,40 @@ socket.emit('join_dashboard',TID);
 function toast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=ok?'var(--gold)':'#ef4444';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function showTab(name,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById('tab-'+name).classList.add('active');document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(name==='finance')loadClosedStays();}
 
-// ── WhatsApp — logique identique à views_hotel.js (liaison <10s) ──────────
+// ── WhatsApp ─────────────────────────────────────────────────────────────
 async function connectWA(){
-  document.getElementById('wa-label').textContent='⟳ Connexion en cours...';
+  const lbl=document.getElementById('wa-label');
+  if(lbl)lbl.textContent='Connexion en cours...';
   await fetch('/dashboard/'+TID+'/connect',{method:'POST'});
 }
 async function disconnectWA(){
   await fetch('/dashboard/'+TID+'/disconnect',{method:'POST'});
 }
 
-const WA_LABELS={'connected':'✓ Connecté','qr_ready':'⟳ QR Prêt — Scanner maintenant','disconnected':'✗ Déconnecté','initializing':'⟳ Initialisation...','error':'✗ Erreur'};
-
 socket.on('session_status',({tenantId,status,qrDataUrl,phone})=>{
   if(tenantId!==TID)return;
-  // Statut dot + label
   const dot=document.getElementById('wa-dot');
   const lbl=document.getElementById('wa-label');
-  if(dot)dot.className='status-dot status-'+status;
-  if(lbl)lbl.textContent=WA_LABELS[status]||status;
-
-  // QR inline
   const qrEl=document.getElementById('qr-container');
+  const labels={'connected':'Connecte','qr_ready':'QR Pret - Scanner','disconnected':'Deconnecte','initializing':'Initialisation...','error':'Erreur'};
+  if(dot)dot.className='status-dot status-'+status;
+  if(lbl)lbl.textContent=labels[status]||status;
+  if(!qrEl)return;
   if(status==='qr_ready'&&qrDataUrl){
     qrEl.style.display='flex';
-    qrEl.innerHTML=`<div class="flex flex-col items-center gap-2">
-      <p class="text-xs text-gray-400">Ouvrez WhatsApp → Appareils liés → Scanner ce QR</p>
-      <div class="p-3 bg-white rounded-2xl inline-block shadow-2xl shadow-yellow-900/20">
-        <img src="${qrDataUrl}" alt="QR" style="width:208px;height:208px;">
-      </div></div>`;
-  } else if(status==='connected'){
+    qrEl.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">'
+      +'<p style="font-size:.75rem;color:#9ca3af;">Ouvrez WhatsApp - Appareils lies - Scanner ce QR</p>'
+      +'<div style="padding:12px;background:#fff;border-radius:16px;">'
+      +'<img src="'+qrDataUrl+'" style="width:208px;height:208px;display:block;"></div></div>';
+  }else if(status==='connected'){
     qrEl.style.display='flex';
-    qrEl.innerHTML=`<div class="text-center py-2"><div class="text-3xl mb-1">✅</div><div class="text-sm" style="color:#22c55e">WhatsApp opérationnel</div>${phone?`<div class="text-xs text-gray-500 mt-1">📱 ${phone}</div>`:''}</div>`;
-    toast('✅ WhatsApp connecté !');
-  } else {
+    qrEl.innerHTML='<div style="text-align:center;padding:8px;">'
+      +'<div style="font-size:2rem;">&#x2705;</div>'
+      +'<div style="color:#22c55e;font-size:.875rem;">WhatsApp operationnel</div>'
+      +(phone?'<div style="color:#6b7280;font-size:.75rem;margin-top:4px;">Tel: '+phone+'</div>':'')
+      +'</div>';
+    toast('WhatsApp connecte !');
+  }else{
     qrEl.style.display='none';
     qrEl.innerHTML='';
   }
