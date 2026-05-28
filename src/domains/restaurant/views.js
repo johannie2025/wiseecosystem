@@ -146,6 +146,7 @@ ${js}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const fmt = n => Number(n || 0).toLocaleString('fr-FR');
+const escapeJs = s => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '\\n');
 const orderStatusLabel = { pending:'En attente', confirmed:'Confirmée', preparing:'En préparation', ready:'Prête !', served:'Servie', cancelled:'Annulée' };
 const tableStatusLabel  = { free:'Libre', occupied:'Occupée', reserved:'Réservée', out_of_service:'Hors service' };
 const resaStatusLabel   = { confirmed:'Confirmée', arrived:'Arrivée', completed:'Terminée', cancelled:'Annulée', no_show:'Absent' };
@@ -211,9 +212,9 @@ export function renderRestaurantSuperAdmin(restaurants) {
 </body>
 ` + FOOT(`
 async function createRestaurant(){
-  const body={name:document.getElementById('n_name').value,address:document.getElementById('n_addr').value,staffPhone:document.getElementById('n_phone').value,cuisineType:document.getElementById('n_cuisine').value,openingHours:document.getElementById('n_hours').value,adminSecret:'${secret}'};
+  const body={name:document.getElementById('n_name').value,address:document.getElementById('n_addr').value,staffPhone:document.getElementById('n_phone').value,cuisineType:document.getElementById('n_cuisine').value,openingHours:document.getElementById('n_hours').value,adminSecret:'${escapeJs(secret)}'};
   if(!body.name){toast('Nom requis','error');return;}
-  const r=await fetch('/restaurant/admin/create',{method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':'${secret}'},body:JSON.stringify(body)}).then(r=>r.json());
+  const r=await fetch('/restaurant/admin/create',{method:'POST',headers:{'Content-Type':'application/json','x-admin-secret':'${escapeJs(secret)}'},body:JSON.stringify(body)}).then(r=>r.json());
   if(r.success){toast('Restaurant créé !','success');setTimeout(()=>location.reload(),1000);}
   else toast(r.error||'Erreur','error');
 }
@@ -562,7 +563,6 @@ export function renderRestaurantDashboard(restaurant, session, orders, tables, r
     </section>
 
   </main>
-</body>
 
 <!-- Modal Réservation -->
 <div id="modal-reservation" class="modal-backdrop hidden">
@@ -582,6 +582,7 @@ export function renderRestaurantDashboard(restaurant, session, orders, tables, r
     </div>
   </div>
 </div>
+</body>
 ` + FOOT(`
 const TID = '${tid}';
 const socket = io();
@@ -694,10 +695,10 @@ async function sendBroadcast(){
 }
 
 const templates={
-  menu_jour:'🌟 *Menu du Jour — ${restaurant.name}*\\n\\n🍗 Poulet DG ......... 7 000 XAF\\n🌿 Ndolé ............. 5 000 XAF\\n🥩 Bœuf Braisé ....... 6 500 XAF\\n\\n🍹 Jus Naturel ........ 1 500 XAF\\n🍺 Bière Locale ........ 1 000 XAF\\n\\n📅 Réservez votre table:\\n_réserver [nb] places à [heure]_\\n\\n📍 ${restaurant.address}',
-  promo_weekend:'🎉 *Offre Week-end — ${restaurant.name}*\\n\\nCe vendredi & samedi : *-15% sur tout le menu* !\\n\\nValable sur présentation de ce message.\\n\\n📞 Réservez maintenant : _réserver 2 places à 20h_',
-  happy_hour:'🍺 *Happy Hour — ${restaurant.name}*\\n\\nDe 17h à 19h : *2 boissons pour le prix d\\'une* !\\n\\nBière · Jus · Softs\\n\\nÀ tout à l\\'heure ! 🥂',
-  fidelite:'⭐ *Programme Fidélité — ${restaurant.name}*\\n\\nVous cumulez des points à chaque commande !\\n*1 point = 1 000 XAF dépensé*\\n\\n🎁 À partir de 10 points : dessert offert !\\n🎁 À partir de 25 points : repas gratuit !\\n\\nTapez *menu* pour commander maintenant !'
+  menu_jour:'🌟 *Menu du Jour — ${escapeJs(restaurant.name)}*\\n\\n🍗 Poulet DG ......... 7 000 XAF\\n🌿 Ndolé ............. 5 000 XAF\\n🥩 Bœuf Braisé ....... 6 500 XAF\\n\\n🍹 Jus Naturel ........ 1 500 XAF\\n🍺 Bière Locale ........ 1 000 XAF\\n\\n📅 Réservez votre table:\\n_réserver [nb] places à [heure]_\\n\\n📍 ${escapeJs(restaurant.address)}',
+  promo_weekend:'🎉 *Offre Week-end — ${escapeJs(restaurant.name)}*\\n\\nCe vendredi & samedi : *-15% sur tout le menu* !\\n\\nValable sur présentation de ce message.\\n\\n📞 Réservez maintenant : _réserver 2 places à 20h_',
+  happy_hour:'🍺 *Happy Hour — ${escapeJs(restaurant.name)}*\\n\\nDe 17h à 19h : *2 boissons pour le prix d\\'une* !\\n\\nBière · Jus · Softs\\n\\nÀ tout à l\\'heure ! 🥂',
+  fidelite:'⭐ *Programme Fidélité — ${escapeJs(restaurant.name)}*\\n\\nVous cumulez des points à chaque commande !\\n*1 point = 1 000 XAF dépensé*\\n\\n🎁 À partir de 10 points : dessert offert !\\n🎁 À partir de 25 points : repas gratuit !\\n\\nTapez *menu* pour commander maintenant !'
 };
 function setTemplate(t){ document.getElementById('promo-msg').value=templates[t]||''; }
 
