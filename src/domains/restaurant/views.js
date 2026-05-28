@@ -63,6 +63,9 @@ const HEAD = (title, extra = '') => `<!DOCTYPE html>
   .tab-btn:not(.active):hover{color:var(--cream);background:var(--ebony-3);}
   .tab-pane{display:none;} .tab-pane.active{display:block;}
 
+  /* ─ Sections principales (navigation sidebar) ─ */
+  .main-section{display:none;} .main-section.active{display:block;}
+
   /* ─ Badges statut ─ */
   .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:999px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
   .badge-pending{background:var(--warn-bg);color:var(--amber);border:1px solid rgba(245,158,11,.25);}
