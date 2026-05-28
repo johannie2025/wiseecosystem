@@ -630,22 +630,23 @@ async function refreshOrders(){
   if(!container)return;
   if(!data.length){container.innerHTML='<div class="text-center muted py-12">Aucune commande.</div>';return;}
   container.innerHTML=data.slice(0,50).map(o=>{
-    const items=o.items.map(i=>(i.emoji||'🍽️')+' '+i.name+' ×'+i.qty).join(' · ');
-    const btnConfirm=o.status==='pending'?'<button onclick="updateOrder(\''+o.orderId+'\',\'confirmed\')" class="btn btn-gold btn-sm">✅ Confirmer</button>':'';
-    const btnPrepa=o.status==='confirmed'?'<button onclick="updateOrder(\''+o.orderId+'\',\'preparing\')" class="btn btn-outline btn-sm">👨‍🍳 En prépa</button>':'';
-    const btnReady=o.status==='preparing'?'<button onclick="updateOrder(\''+o.orderId+'\',\'ready\')" class="btn btn-outline btn-sm">🔔 Prête</button>':'';
-    const btnServed=o.status==='ready'?'<button onclick="updateOrder(\''+o.orderId+'\',\'served\')" class="btn btn-ghost btn-sm">✅ Servie</button>':'';
-    const btnCancel=['pending','confirmed','preparing'].includes(o.status)?'<button onclick="updateOrder(\''+o.orderId+'\',\'cancelled\')" class="btn btn-danger btn-sm">✗ Annuler</button>':'';
-    const payLbl={cash:'💵 Cash',orange_money:'🟠 OM',momo:'🟡 MoMo'}[o.paymentMethod]||o.paymentMethod;
-    const statusLbl={pending:'En attente',confirmed:'Confirmée',preparing:'En préparation',ready:'Prête !',served:'Servie',cancelled:'Annulée'}[o.status]||o.status;
+    const id=o.orderId;
+    const items=o.items.map(i=>(i.emoji||'🍽️')+' '+i.name+' \xd7'+i.qty).join(' \xb7 ');
+    const btnConfirm=o.status==='pending'?'<button onclick="updateOrder('+JSON.stringify(id)+',\x22confirmed\x22)" class="btn btn-gold btn-sm">\u2705 Confirmer</button>':'';
+    const btnPrepa=o.status==='confirmed'?'<button onclick="updateOrder('+JSON.stringify(id)+',\x22preparing\x22)" class="btn btn-outline btn-sm">\ud83d\udc68\u200d\ud83c\udf73 En pr\xe9pa</button>':'';
+    const btnReady=o.status==='preparing'?'<button onclick="updateOrder('+JSON.stringify(id)+',\x22ready\x22)" class="btn btn-outline btn-sm">\ud83d\udd14 Pr\xeate</button>':'';
+    const btnServed=o.status==='ready'?'<button onclick="updateOrder('+JSON.stringify(id)+',\x22served\x22)" class="btn btn-ghost btn-sm">\u2705 Servie</button>':'';
+    const btnCancel=['pending','confirmed','preparing'].includes(o.status)?'<button onclick="updateOrder('+JSON.stringify(id)+',\x22cancelled\x22)" class="btn btn-danger btn-sm">\u2717 Annuler</button>':'';
+    const payLbl={cash:'\ud83d\udcb5 Cash',orange_money:'\ud83d\udfe0 OM',momo:'\ud83d\udfe1 MoMo'}[o.paymentMethod]||o.paymentMethod;
+    const statusLbl={pending:'En attente',confirmed:'Confirm\xe9e',preparing:'En pr\xe9paration',ready:'Pr\xeate !',served:'Servie',cancelled:'Annul\xe9e'}[o.status]||o.status;
     const time=new Date(o.createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    return '<div class="order-row order-'+o.status+' card p-4 mb-3">'+
-      '<div class="flex items-start justify-between gap-3">'+
-      '<div class="flex-1"><div class="flex items-center gap-2 mb-2"><span class="font-mono text-xs gold">#'+o.orderId.slice(-6).toUpperCase()+'</span><span class="badge badge-'+o.status+'">'+statusLbl+'</span><span class="text-xs muted">'+payLbl+'</span></div>'+
-      '<div class="text-sm font-medium mb-1">'+o.clientName+' <span class="muted text-xs">· '+o.clientPhone+'</span></div>'+
-      '<div class="text-xs muted">'+items+'</div></div>'+
-      '<div class="text-right flex-shrink-0"><div class="font-display text-lg gold">'+Number(o.total).toLocaleString('fr-FR')+' <span class="text-xs">XAF</span></div><div class="text-xs muted">'+time+'</div></div></div>'+
-      '<div class="flex gap-2 mt-3 flex-wrap">'+btnConfirm+btnPrepa+btnReady+btnServed+btnCancel+'</div></div>';
+    return '<div class="order-row order-'+o.status+' card p-4 mb-3">'
+      +'<div class="flex items-start justify-between gap-3">'
+      +'<div class="flex-1"><div class="flex items-center gap-2 mb-2"><span class="font-mono text-xs gold">#'+o.orderId.slice(-6).toUpperCase()+'</span><span class="badge badge-'+o.status+'">'+statusLbl+'</span><span class="text-xs muted">'+payLbl+'</span></div>'
+      +'<div class="text-sm font-medium mb-1">'+o.clientName+' <span class="muted text-xs">\xb7 '+o.clientPhone+'</span></div>'
+      +'<div class="text-xs muted">'+items+'</div></div>'
+      +'<div class="text-right flex-shrink-0"><div class="font-display text-lg gold">'+Number(o.total).toLocaleString('fr-FR')+' <span class="text-xs">XAF</span></div><div class="text-xs muted">'+time+'</div></div></div>'
+      +'<div class="flex gap-2 mt-3 flex-wrap">'+btnConfirm+btnPrepa+btnReady+btnServed+btnCancel+'</div></div>';
   }).join('');
 }
 
