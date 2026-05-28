@@ -209,7 +209,6 @@ export function renderRestaurantSuperAdmin(restaurants) {
       ${cards || '<p class="muted col-span-3 text-center py-8">Aucun restaurant. Créez-en un !</p>'}
     </div>
   </div>
-</body>
 ` + FOOT(`
 async function createRestaurant(){
   const body={name:document.getElementById('n_name').value,address:document.getElementById('n_addr').value,staffPhone:document.getElementById('n_phone').value,cuisineType:document.getElementById('n_cuisine').value,openingHours:document.getElementById('n_hours').value,adminSecret:'${escapeJs(secret)}'};
@@ -582,7 +581,6 @@ export function renderRestaurantDashboard(restaurant, session, orders, tables, r
     </div>
   </div>
 </div>
-</body>
 ` + FOOT(`
 const TID = '${tid}';
 const socket = io();
@@ -826,7 +824,6 @@ export function renderRestaurantConfig(restaurant, menu, tables) {
       </div>
     </div>
   </div>
-</body>
 ` + FOOT(`
 const TID='${tid}';
 
